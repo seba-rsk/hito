@@ -68,7 +68,7 @@ $redDisponible = if ($SinRed) { $false } else { Test-Path (Split-Path $planillaP
 $logFile  = Join-Path $scriptDir "log.txt"
 $avisoNum = if ($Segundo) { "2do aviso" } else { "1er aviso" }
 
-function Write-Log {
+function Write-HitoLog {
     param($estado)
     $fecha = Get-Date -Format "yyyy-MM-dd"
     $hora  = Get-Date -Format "HH:mm"
@@ -150,7 +150,7 @@ $btnAbrir.Add_Click({
         )
     } elseif (Test-Path $planillaPath) {
         Unregister-ScheduledTask -TaskName "HITO_Reintento" -Confirm:$false -ErrorAction SilentlyContinue
-        Write-Log "Abrio planilla"
+        Write-HitoLog "Abrio planilla"
         $form.remove_FormClosing($handlerCierre)
         Start-Process $planillaPath
         $form.Close()
@@ -177,14 +177,14 @@ $btnListo.FlatAppearance.BorderSize = 0
 $btnListo.Cursor                   = "Hand"
 $btnListo.Add_Click({
     Unregister-ScheduledTask -TaskName "HITO_Reintento" -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Log "Completado"
+    Write-HitoLog "Completado"
     $form.remove_FormClosing($handlerCierre)
     $form.Close()
 })
 $form.Controls.Add($btnListo)
 
 $handlerCierre = {
-    Write-Log "Cerrado sin respuesta"
+    Write-HitoLog "Cerrado sin respuesta"
     # HITO_Reintento NO se cancela: el segundo aviso debe aparecer igual
 }
 $form.Add_FormClosing($handlerCierre)
