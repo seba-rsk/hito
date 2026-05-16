@@ -1,0 +1,17 @@
+# Datos de usuario — nunca se suben al repositorio
+config.json
+log.txt
+
+# Accesos directos generados por el instalador
+*.lnk
+
+# Archivos temporales de Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Archivos temporales de editores
+*.swp
+*.swo
+*~
+.vscode/

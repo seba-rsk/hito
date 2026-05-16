@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar sintaxis de scripts
+        shell: pwsh
+        run: |
+          $errores = @()
+          Get-ChildItem -Filter "*.ps1" | ForEach-Object {
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$parseErrors
+            )
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { $errores += "$($_.Extent.File): $_" }
+            }
+          }
+          if ($errores.Count -gt 0) {
+            $errores | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          Write-Host "Sintaxis OK en todos los scripts."
+
+      - name: Verificar encoding UTF-8 BOM
+        shell: pwsh
+        run: |
+          $bom = [byte[]]@(0xEF, 0xBB, 0xBF)
+          $errores = @()
+          Get-ChildItem -Filter "*.ps1" | ForEach-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            $tieneBOM = $bytes.Length -ge 3 -and
+                        $bytes[0] -eq $bom[0] -and
+                        $bytes[1] -eq $bom[1] -and
+                        $bytes[2] -eq $bom[2]
+            if (-not $tieneBOM) { $errores += $_.Name }
+          }
+          if ($errores.Count -gt 0) {
+            Write-Error "Sin BOM UTF-8: $($errores -join ', ')"
+            exit 1
+          }
+          Write-Host "Encoding OK en todos los scripts."
+
+      - name: Lint con PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $excluir = @(
+            'PSAvoidUsingPositionalParameters',
+            'PSUseSingularNouns',
+            'PSUseShouldProcessForStateChangingFunctions'
+          )
+          $resultado = Get-ChildItem -Filter "*.ps1" |
+            ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -ExcludeRule $excluir } |
+            Where-Object { $_.Severity -in @('Error', 'Warning') }
+          if ($resultado) {
+            $resultado | Format-Table RuleName, Severity, Line, Message -AutoSize
+            exit 1
+          }
+          Write-Host "Lint OK."
