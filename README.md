@@ -15,19 +15,19 @@ Windows 10 / 11 · No requiere permisos de administrador · v1.0.0
 
 **Ventana de recordatorio**
 
-![Ventana de recordatorio](docs/ventana_recordatorio.png)
+![Ventana de recordatorio](https://raw.githubusercontent.com/seba-rsk/hito/refs/heads/main/docs/ventana_recordatorio.png)
 
 **Ventana de recordatorio - Segundo aviso**
 
-![Ventana de recordatorio - Segundo aviso](docs/ventana_segundo_aviso.png)
+![Ventana de recordatorio - Segundo aviso](https://raw.githubusercontent.com/seba-rsk/hito/refs/heads/main/docs/ventana_segundo_aviso.png)
 
 **Configuración**
 
-![Formulario de configuración](docs/configurador.png)
+![Formulario de configuración](https://raw.githubusercontent.com/seba-rsk/hito/refs/heads/main/docs/configurador.png)
 
 **Red no disponible**
 
-![Aviso de red no disponible](docs/ventana_sin_red.png)
+![Aviso de red no disponible](https://raw.githubusercontent.com/seba-rsk/hito/refs/heads/main/docs/ventana_sin_red.png)
 
 ---
 
