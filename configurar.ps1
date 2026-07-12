@@ -1,88 +1,85 @@
 ﻿#Requires -Version 5.1
-# configurar.ps1 — v1.0.0
-# Permite seleccionar la planilla y configurar el horario del recordatorio.
-# Accesible desde: Menu Inicio -> HITO -> Configuracion
+# configurar.ps1
+# Ventana principal de HITO: selecciona la planilla, configura qué días
+# tienen recordatorio y a qué hora, y da acceso a "Acerca de".
+# Accesible desde: Menú Inicio -> HITO
 
-$scriptDir = $PSScriptRoot
+$scriptDir  = $PSScriptRoot
 $configFile = Join-Path $scriptDir "config.json"
 
-$tareasScheduled = [ordered]@{
-    Lunes     = "HITO_Lun"
-    Martes    = "HITO_Mar"
-    Miercoles = "HITO_Mie"
-    Jueves    = "HITO_Jue"
-    Viernes   = "HITO_Vie"
-}
+. (Join-Path $scriptDir "constantes.ps1")
+. (Join-Path $scriptDir "sincronizar_horarios.ps1")
+. (Join-Path $scriptDir "acerca_de.ps1")
+Import-Module (Join-Path $scriptDir "validaciones.psm1") -Force
+Import-Module (Join-Path $scriptDir "configuracion.psm1") -Force
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Leer valores actuales
-$valorPlanilla = ""
-$horasPorDia   = [ordered]@{ Lunes="17:30"; Martes="17:30"; Miercoles="17:30"; Jueves="17:30"; Viernes="17:30" }
-$displayDia    = @{ Lunes="Lunes"; Martes="Martes"; Miercoles="Miércoles"; Jueves="Jueves"; Viernes="Viernes" }
+. (Join-Path $scriptDir "estilos.ps1")
 
-if (Test-Path $configFile) {
-    $config = Get-Content $configFile -Encoding UTF8 -Raw | ConvertFrom-Json
-    $valorPlanilla = if ($config.planilla) { $config.planilla.Trim() } else { "" }
-    if ($config.PSObject.Properties['horarios']) {
-        foreach ($dia in @($horasPorDia.Keys)) {
-            $val = $config.horarios.$dia
-            if ($val) { $horasPorDia[$dia] = $val.Trim() }
+$displayDia = @{
+    Lunes = "Lunes"; Martes = "Martes"; Miercoles = "Miércoles"; Jueves = "Jueves"
+    Viernes = "Viernes"; Sabado = "Sábado"; Domingo = "Domingo"
+}
+
+# Leer valores actuales: por defecto, Lunes a Viernes activos a la hora
+# por defecto; si hay config.json previo, se reemplaza por lo guardado.
+$valorPlanilla = ""
+$horasPorDia   = [ordered]@{}
+$diasActivos   = [ordered]@{}
+foreach ($dia in $HitoDias.Keys) {
+    $nombre = $HitoDias[$dia].Nombre
+    $horasPorDia[$nombre] = $HitoHoraDefault
+    $diasActivos[$nombre] = $HitoDiasLaborables -contains $nombre
+}
+
+$cfg = Get-HitoConfig -RutaConfig $configFile
+if ($cfg.Existe -and -not $cfg.Ok) {
+    [void](Show-DialogoHito -Titulo "Configuración dañada" -Tipo "Advertencia" `
+        -Mensaje "No pudimos leer la configuración guardada, así que se muestran los valores por defecto.`nAl guardar, se reemplaza por una configuración nueva.")
+} elseif ($cfg.Existe) {
+    $valorPlanilla = $cfg.Planilla
+    if ($cfg.Horarios.Count -gt 0) {
+        foreach ($nombre in @($diasActivos.Keys)) { $diasActivos[$nombre] = $false }
+        foreach ($nombre in $cfg.Horarios.Keys) {
+            if ($horasPorDia.Contains($nombre)) {
+                $horasPorDia[$nombre] = ConvertTo-HoraNormalizada $cfg.Horarios[$nombre]
+                $diasActivos[$nombre] = $true
+            }
         }
     }
 }
 
 # --- Formulario ---
-$form                 = New-Object System.Windows.Forms.Form
-$form.Text            = "HITO – Configuración"
-$form.Size            = New-Object System.Drawing.Size(460, 375)
-$form.StartPosition   = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
-$form.MaximizeBox     = $false
-$form.MinimizeBox     = $false
-$form.TopMost         = $true
-$form.BackColor       = [System.Drawing.Color]::FromArgb(245, 245, 245)
-$iconPath = Join-Path $scriptDir "hito.ico"
-if (Test-Path $iconPath) { $form.Icon = New-Object System.Drawing.Icon($iconPath) }
+# Todas las posiciones se calculan contra ClientSize (área útil real) con
+# margen uniforme, para que el margen derecho sea igual al izquierdo.
+$anchoVentana   = $HitoAnchoVentanaPrincipal
+$anchoContenido = $anchoVentana - (2 * $HitoMargen)
 
-$labelTitulo           = New-Object System.Windows.Forms.Label
-$labelTitulo.Text      = "Configuración"
-$labelTitulo.Font      = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
-$labelTitulo.Location  = New-Object System.Drawing.Point(20, 20)
-$labelTitulo.Size      = New-Object System.Drawing.Size(410, 28)
-$labelTitulo.ForeColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$form.Controls.Add($labelTitulo)
+# Conserva el botón en la barra de tareas: es la ventana principal del
+# software, no un aviso transitorio.
+$form = New-VentanaHito -Titulo "HITO" -Ancho $anchoVentana -Alto 554 -ScriptDir $scriptDir -EnBarraTareas
 
-# -- Seccion Planilla --
-$labelNombre           = New-Object System.Windows.Forms.Label
-$labelNombre.Text      = "Planilla de horas"
-$labelNombre.Font      = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$labelNombre.Location  = New-Object System.Drawing.Point(20, 60)
-$labelNombre.Size      = New-Object System.Drawing.Size(410, 18)
-$labelNombre.ForeColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$form.Controls.Add($labelNombre)
+$form.Controls.Add((New-LabelHito -Texto "Tus recordatorios" -X $HitoMargen -Y 52 -Ancho 250 -Alto 30 -Tamano 14 -Negrita))
+
+$btnAcercaDe = New-BotonHito -Texto "ⓘ &Acerca de" -X ($anchoVentana - $HitoMargen - 112) -Y 52 -Ancho 112 -Alto 30
+$btnAcercaDe.Add_Click({ Show-VentanaAcercaDe -ScriptDir $scriptDir -Owner $form })
+$form.Controls.Add($btnAcercaDe)
+
+# -- Sección Planilla --
+$form.Controls.Add((New-LabelHito -Texto "PLANILLA DE HORAS" -X $HitoMargen -Y 98 -Ancho $anchoContenido -Alto 16 -Negrita -Color $HitoColorTextoSuave))
 
 $textBoxPlanilla           = New-Object System.Windows.Forms.TextBox
-$textBoxPlanilla.Font      = New-Object System.Drawing.Font("Segoe UI", 9)
-$textBoxPlanilla.Location  = New-Object System.Drawing.Point(20, 82)
-$textBoxPlanilla.Size      = New-Object System.Drawing.Size(318, 24)
+$textBoxPlanilla.Font      = New-FuenteHito
+$textBoxPlanilla.Location  = New-Object System.Drawing.Point($HitoMargen, 121)
+$textBoxPlanilla.Size      = New-Object System.Drawing.Size(312, 24)
 $textBoxPlanilla.Text      = $valorPlanilla
-$textBoxPlanilla.ReadOnly  = $true
 $textBoxPlanilla.BackColor = [System.Drawing.Color]::White
-$textBoxPlanilla.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$textBoxPlanilla.ForeColor = $HitoColorTexto
 $form.Controls.Add($textBoxPlanilla)
 
-$btnExaminar                          = New-Object System.Windows.Forms.Button
-$btnExaminar.Text                     = "Examinar..."
-$btnExaminar.Font                     = New-Object System.Drawing.Font("Segoe UI", 9)
-$btnExaminar.Location                 = New-Object System.Drawing.Point(346, 80)
-$btnExaminar.Size                     = New-Object System.Drawing.Size(84, 26)
-$btnExaminar.BackColor                = [System.Drawing.Color]::FromArgb(225, 225, 225)
-$btnExaminar.ForeColor                = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$btnExaminar.FlatStyle                = "Flat"
-$btnExaminar.FlatAppearance.BorderSize = 0
-$btnExaminar.Cursor                   = "Hand"
+$btnExaminar = New-BotonHito -Texto "&Examinar..." -X ($anchoVentana - $HitoMargen - 90) -Y 118 -Ancho 90 -Alto 30
 $btnExaminar.Add_Click({
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title  = "Seleccionar planilla de horas"
@@ -90,7 +87,7 @@ $btnExaminar.Add_Click({
     $rutaActual = $textBoxPlanilla.Text.Trim()
     if ($rutaActual) {
         $dirActual = Split-Path $rutaActual
-        if (Test-Path $dirActual) { $dialog.InitialDirectory = $dirActual }
+        if (Test-Path -LiteralPath $dirActual) { $dialog.InitialDirectory = $dirActual }
     }
     if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $textBoxPlanilla.Text           = $dialog.FileName
@@ -99,266 +96,235 @@ $btnExaminar.Add_Click({
 })
 $form.Controls.Add($btnExaminar)
 
-# -- Seccion Horarios --
-$labelHorarios           = New-Object System.Windows.Forms.Label
-$labelHorarios.Text      = "Hora del recordatorio"
-$labelHorarios.Font      = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$labelHorarios.Location  = New-Object System.Drawing.Point(20, 120)
-$labelHorarios.Size      = New-Object System.Drawing.Size(410, 18)
-$labelHorarios.ForeColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$form.Controls.Add($labelHorarios)
-
-$checkMismo          = New-Object System.Windows.Forms.CheckBox
-$checkMismo.Text     = "Mismo horario todos los días"
-$checkMismo.Font     = New-Object System.Drawing.Font("Segoe UI", 9)
-$checkMismo.Location = New-Object System.Drawing.Point(20, 143)
-$checkMismo.Size     = New-Object System.Drawing.Size(250, 20)
-$checkMismo.ForeColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$form.Controls.Add($checkMismo)
-
-$colorDeshabilitado = [System.Drawing.Color]::FromArgb(220, 220, 220)
-$colorHabilitado    = [System.Drawing.Color]::White
-
-function Test-HoraValida {
-    param($hora, $nombreDia)
-    if ($hora -notmatch "^\d{1,2}:\d{2}$") {
-        [void][System.Windows.Forms.MessageBox]::Show(
-            "El horario del $nombreDia no es válido.`nUsa el formato HH:MM (ej: 17:30).",
-            "Hora incorrecta",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning)
-        return $false
-    }
-    $p = $hora -split ":"
-    if ([int]$p[0] -gt 23 -or [int]$p[1] -gt 59) {
-        [void][System.Windows.Forms.MessageBox]::Show(
-            "El horario del $nombreDia está fuera de rango.`nHoras: 0-23, Minutos: 0-59.",
-            "Hora incorrecta",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning)
-        return $false
-    }
-    return $true
-}
-
-function Test-Inputs {
-    param($rutaPlanilla, $horas)
-    if ($rutaPlanilla -eq "") {
-        [void][System.Windows.Forms.MessageBox]::Show(
-            "Selecciona tu planilla con el botón Examinar.",
-            "Falta la planilla",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning)
-        return $null
-    }
-    $horasNorm = [ordered]@{}
-    foreach ($dia in $horas.Keys) {
-        $hora = $horas[$dia]
-        if (-not (Test-HoraValida $hora $displayDia[$dia])) { return $null }
-        $p = $hora -split ":"
-        $horasNorm[$dia] = "{0:D2}:{1:D2}" -f [int]$p[0], [int]$p[1]
-    }
-    return $horasNorm
-}
+# -- Sección Días y horarios --
+$form.Controls.Add((New-LabelHito -Texto "DÍAS Y HORARIOS" -X $HitoMargen -Y 160 -Ancho $anchoContenido -Alto 16 -Negrita -Color $HitoColorTextoSuave))
 
 function Save-Config {
-    param($rutaPlanilla, $horasNorm)
-    [ordered]@{ planilla = $rutaPlanilla; horarios = $horasNorm } |
-        ConvertTo-Json -Depth 3 | Set-Content -Path $configFile -Encoding UTF8
-    return (Test-Path $rutaPlanilla)
+    <#
+    .SYNOPSIS
+    Guarda la ruta de la planilla y los horarios normalizados en
+    config.json. Escribe a un archivo temporal y recién después lo
+    renombra, para que un corte a mitad de escritura no deje la
+    configuración truncada.
+    #>
+    param([string]$RutaPlanilla, $HorasNorm)
+    $temporal = "$configFile.tmp"
+    [ordered]@{ planilla = $RutaPlanilla; horarios = $HorasNorm } |
+        ConvertTo-Json -Depth 3 | Set-Content -Path $temporal -Encoding UTF8
+    Move-Item -Path $temporal -Destination $configFile -Force
 }
 
-function Update-ScheduledTasks {
-    param($horasNorm)
-    $diasSemana    = [ordered]@{ Lunes='Monday'; Martes='Tuesday'; Miercoles='Wednesday'; Jueves='Thursday'; Viernes='Friday' }
-    $erroresTareas = @()
-    foreach ($dia in @($tareasScheduled.Keys)) {
-        try {
-            $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $diasSemana[$dia] -At $horasNorm[$dia]
-            Set-ScheduledTask -TaskName $tareasScheduled[$dia] -Trigger $trigger | Out-Null
-        } catch {
-            $erroresTareas += $dia
-        }
-    }
-    return $erroresTareas
-}
-
-function New-LabelDia($texto, $x, $y) {
-    $l            = New-Object System.Windows.Forms.Label
-    $l.Text       = $texto
-    $l.Font       = New-Object System.Drawing.Font("Segoe UI", 9)
-    $l.Location   = New-Object System.Drawing.Point($x, ($y + 4))
-    $l.Size       = New-Object System.Drawing.Size(85, 18)
-    $l.ForeColor  = [System.Drawing.Color]::FromArgb(30, 30, 30)
-    return $l
+function New-ToggleDia($texto, $checked, $x, $y) {
+    <#
+    .SYNOPSIS
+    Crea el botón de día (checkbox con apariencia de botón): al activarlo
+    se desbloquea el campo de hora de su fila.
+    #>
+    $c            = New-Object System.Windows.Forms.CheckBox
+    $c.Appearance = [System.Windows.Forms.Appearance]::Button
+    $c.FlatStyle  = "Flat"
+    $c.FlatAppearance.BorderSize = 0
+    $c.Text       = $texto
+    $c.Font       = New-FuenteHito -Tamano 10
+    $c.TextAlign  = [System.Drawing.ContentAlignment]::MiddleLeft
+    $c.Padding    = New-Object System.Windows.Forms.Padding(12, 0, 0, 0)
+    $c.Location   = New-Object System.Drawing.Point($x, $y)
+    $c.Size       = New-Object System.Drawing.Size(170, 32)
+    $c.Cursor     = "Hand"
+    $c.Checked    = $checked
+    return $c
 }
 
 function New-TextBoxHora($valor, $x, $y) {
-    $t            = New-Object System.Windows.Forms.TextBox
-    $t.Font       = New-Object System.Drawing.Font("Segoe UI", 10)
-    $t.Location   = New-Object System.Drawing.Point($x, $y)
-    $t.Size       = New-Object System.Drawing.Size(65, 26)
-    $t.MaxLength  = 5
-    $t.Text       = $valor
-    $t.ForeColor  = [System.Drawing.Color]::FromArgb(30, 30, 30)
+    <#
+    .SYNOPSIS
+    Crea el campo de hora de una fila de días.
+    #>
+    $t           = New-Object System.Windows.Forms.TextBox
+    $t.Font      = New-FuenteHito -Tamano 10
+    $t.Location  = New-Object System.Drawing.Point($x, $y)
+    $t.Size      = New-Object System.Drawing.Size(70, 26)
+    $t.MaxLength = 5
+    $t.Text      = $valor
+    $t.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+    $t.ForeColor = $HitoColorTexto
     return $t
 }
 
-$form.Controls.Add((New-LabelDia "Lunes:"      20  172))
-$form.Controls.Add((New-LabelDia "Martes:"    220  172))
-$form.Controls.Add((New-LabelDia "Miércoles:"  20  204))
-$form.Controls.Add((New-LabelDia "Jueves:"    220  204))
-$form.Controls.Add((New-LabelDia "Viernes:"    20  236))
+# Nombre interno -> controles de su fila (Check, Hora)
+$controlsFila = [ordered]@{}
 
-$tbLun = New-TextBoxHora $horasPorDia["Lunes"]     110 172
-$tbMar = New-TextBoxHora $horasPorDia["Martes"]    310 172
-$tbMie = New-TextBoxHora $horasPorDia["Miercoles"] 110 204
-$tbJue = New-TextBoxHora $horasPorDia["Jueves"]    310 204
-$tbVie = New-TextBoxHora $horasPorDia["Viernes"]   110 236
+function Update-EstadoFilaDia([string]$Nombre) {
+    <#
+    .SYNOPSIS
+    Refleja el estado de una fila: día activo = botón lleno con el color
+    primario y campo de hora habilitado; inactivo = botón gris y campo
+    bloqueado.
+    #>
+    $fila   = $controlsFila[$Nombre]
+    $activo = $fila.Check.Checked
 
-$form.Controls.Add($tbLun)
-$form.Controls.Add($tbMar)
-$form.Controls.Add($tbMie)
-$form.Controls.Add($tbJue)
-$form.Controls.Add($tbVie)
+    $fila.Hora.Enabled   = $activo
+    $fila.Hora.BackColor = if ($activo) { [System.Drawing.Color]::White }
+                           else         { $HitoColorCampoInactivo }
 
-$labelFormatHora           = New-Object System.Windows.Forms.Label
-$labelFormatHora.Text      = "Formato 24 hs. Ej: 17:30"
-$labelFormatHora.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
-$labelFormatHora.Location  = New-Object System.Drawing.Point(220, 241)
-$labelFormatHora.Size      = New-Object System.Drawing.Size(200, 16)
-$labelFormatHora.ForeColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
-$form.Controls.Add($labelFormatHora)
-
-$tbDependientes = @($tbMar, $tbMie, $tbJue, $tbVie)
-
-$checkMismo.Add_CheckedChanged({
-    if ($checkMismo.Checked) {
-        foreach ($tb in $tbDependientes) {
-            $tb.Text      = $tbLun.Text
-            $tb.Enabled   = $false
-            $tb.BackColor = $colorDeshabilitado
-        }
+    # CheckedBackColor debe acompañar a BackColor: en el estado tildado,
+    # WinForms pinta con CheckedBackColor y dejaría un celeste lavado.
+    if ($activo) {
+        $fila.Check.BackColor = $HitoColorPrimario
+        $fila.Check.ForeColor = [System.Drawing.Color]::White
+        $fila.Check.FlatAppearance.CheckedBackColor   = $HitoColorPrimario
+        $fila.Check.FlatAppearance.MouseOverBackColor = $HitoColorPrimarioHover
+        $fila.Check.FlatAppearance.MouseDownBackColor = $HitoColorPrimarioDown
     } else {
-        foreach ($tb in $tbDependientes) {
-            $tb.Enabled   = $true
-            $tb.BackColor = $colorHabilitado
-        }
-    }
-})
-
-$tbLun.Add_TextChanged({
-    if ($checkMismo.Checked) {
-        foreach ($tb in $tbDependientes) { $tb.Text = $tbLun.Text }
-    }
-})
-
-$todosIguales = ($horasPorDia["Lunes"] -eq $horasPorDia["Martes"]) -and
-                ($horasPorDia["Lunes"] -eq $horasPorDia["Miercoles"]) -and
-                ($horasPorDia["Lunes"] -eq $horasPorDia["Jueves"]) -and
-                ($horasPorDia["Lunes"] -eq $horasPorDia["Viernes"])
-$checkMismo.Checked = $todosIguales
-if ($todosIguales) {
-    foreach ($tb in $tbDependientes) {
-        $tb.Enabled   = $false
-        $tb.BackColor = $colorDeshabilitado
+        $fila.Check.BackColor = $HitoColorSecundario
+        $fila.Check.ForeColor = $HitoColorTexto
+        $fila.Check.FlatAppearance.CheckedBackColor   = $HitoColorSecundario
+        $fila.Check.FlatAppearance.MouseOverBackColor = $HitoColorSecundarioHover
+        $fila.Check.FlatAppearance.MouseDownBackColor = $HitoColorSecundarioDown
     }
 }
 
-# -- Separador y botones --
-$sep             = New-Object System.Windows.Forms.Panel
-$sep.BackColor   = [System.Drawing.Color]::FromArgb(210, 210, 210)
-$sep.Location    = New-Object System.Drawing.Point(20, 270)
-$sep.Size        = New-Object System.Drawing.Size(410, 1)
-$form.Controls.Add($sep)
+# Una fila por día: botón de día + campo de hora al lado.
+$filaBaseY = 182
+$filaPaso  = 38
+$xHora     = $HitoMargen + 170 + 12
+$i = 0
+foreach ($dia in $HitoDias.Keys) {
+    $nombre = $HitoDias[$dia].Nombre
+    $y      = $filaBaseY + ($i * $filaPaso)
 
-$btnGuardar                          = New-Object System.Windows.Forms.Button
-$btnGuardar.Text                     = "Guardar"
-$btnGuardar.Font                     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$btnGuardar.Location                 = New-Object System.Drawing.Point(20, 284)
-$btnGuardar.Size                     = New-Object System.Drawing.Size(195, 40)
-$btnGuardar.BackColor                = [System.Drawing.Color]::FromArgb(0, 120, 212)
-$btnGuardar.ForeColor                = [System.Drawing.Color]::White
-$btnGuardar.FlatStyle                = "Flat"
-$btnGuardar.FlatAppearance.BorderSize = 0
-$btnGuardar.Cursor                   = "Hand"
+    $check = New-ToggleDia $displayDia[$nombre] $diasActivos[$nombre] $HitoMargen $y
+    $hora  = New-TextBoxHora $horasPorDia[$nombre] $xHora ($y + 3)
+    $form.Controls.Add($check)
+    $form.Controls.Add($hora)
+    $controlsFila[$nombre] = @{ Check = $check; Hora = $hora }
+    $check.Tag = $nombre
+    $check.Add_CheckedChanged({ Update-EstadoFilaDia $this.Tag })
+    $i++
+}
+foreach ($nombre in $controlsFila.Keys) { Update-EstadoFilaDia $nombre }
+
+$form.Controls.Add((New-LabelHito -Texto "Formato 24 hs. Se acepta : . o , como separador (ej: 17:30)." `
+    -X $HitoMargen -Y 450 -Ancho $anchoContenido -Alto 16 -Color $HitoColorTextoHint))
+
+# -- Separador y botones (confirmar abajo a la derecha) --
+$form.Controls.Add((New-SeparadorHito -X $HitoMargen -Y 476 -Ancho $anchoContenido))
+
+function Get-HorasActivas {
+    <#
+    .SYNOPSIS
+    Normaliza el texto de hora de todas las filas (punto o coma pasan a
+    dos puntos, se recortan espacios) y devuelve el hashtable ordenado
+    día interno -> hora de los días que están activos.
+    #>
+    foreach ($nombre in $controlsFila.Keys) {
+        $fila = $controlsFila[$nombre]
+        $fila.Hora.Text = ConvertTo-HoraNormalizada $fila.Hora.Text
+    }
+    $horas = [ordered]@{}
+    foreach ($nombre in $controlsFila.Keys) {
+        if ($controlsFila[$nombre].Check.Checked) {
+            $horas[$nombre] = $controlsFila[$nombre].Hora.Text
+        }
+    }
+    return $horas
+}
+
+function Show-AvisoValidacion {
+    <#
+    .SYNOPSIS
+    Muestra el mensaje correspondiente a una validación fallida de
+    Test-Inputs y, si el problema es una hora, restaura los campos
+    inválidos al último valor guardado válido.
+    #>
+    param($Resultado)
+    switch ($Resultado.MotivoTipo) {
+        "planilla" {
+            [void](Show-DialogoHito -Titulo "Falta la planilla" -Tipo "Advertencia" `
+                -Mensaje "Seleccioná tu planilla con el botón Examinar.")
+        }
+        "sin_dias" {
+            [void](Show-DialogoHito -Titulo "Sin días activos" -Tipo "Advertencia" `
+                -Mensaje "Activá al menos un día para el recordatorio.")
+        }
+        "hora" {
+            if ($Resultado.Motivo -eq "formato") {
+                [void](Show-DialogoHito -Titulo "Hora incorrecta" -Tipo "Advertencia" `
+                    -Mensaje "El horario del $($displayDia[$Resultado.Dia]) no es válido.`nUsá el formato HH:MM (ej: 17:30).")
+            } else {
+                [void](Show-DialogoHito -Titulo "Hora incorrecta" -Tipo "Advertencia" `
+                    -Mensaje "El horario del $($displayDia[$Resultado.Dia]) está fuera de rango.`nHoras: 0-23, Minutos: 0-59.")
+            }
+            # Restaurar celdas inválidas al último valor guardado válido
+            foreach ($nombre in $controlsFila.Keys) {
+                if (-not (Test-HoraValida $controlsFila[$nombre].Hora.Text).Valida) {
+                    $controlsFila[$nombre].Hora.Text = $horasPorDia[$nombre]
+                }
+            }
+        }
+    }
+}
+
+function Set-FormularioOcupado {
+    <#
+    .SYNOPSIS
+    Muestra u oculta el estado "Guardando..." (botones deshabilitados y
+    cursor de espera) mientras se sincronizan las tareas programadas,
+    que puede tardar varios segundos en algunos equipos.
+    #>
+    param([bool]$Ocupado)
+    $btnGuardar.Enabled  = -not $Ocupado
+    $btnCancelar.Enabled = -not $Ocupado
+    $btnGuardar.Text     = if ($Ocupado) { "Guardando..." } else { $script:textoBotonGuardar }
+    $form.Cursor         = if ($Ocupado) { [System.Windows.Forms.Cursors]::WaitCursor }
+                           else          { [System.Windows.Forms.Cursors]::Default }
+    if ($Ocupado) {
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+}
+
+$btnGuardar = New-BotonHito -Texto "&Guardar" -X ($anchoVentana - $HitoMargen - 150) -Y 490 -Ancho 150 -Alto 40 -Primario
+$script:textoBotonGuardar = $btnGuardar.Text
 $btnGuardar.Add_Click({
     $rutaPlanilla = $textBoxPlanilla.Text.Trim()
+    $horas        = Get-HorasActivas
+    $resultado    = Test-Inputs -RutaPlanilla $rutaPlanilla -Horas $horas
 
-    # Normalizar punto o coma como separador (10.30 → 10:30)
-    $tbLun.Text = $tbLun.Text.Trim() -replace '[.,]', ':'
-    if (-not $checkMismo.Checked) {
-        foreach ($tb in $tbDependientes) {
-            $tb.Text = $tb.Text.Trim() -replace '[.,]', ':'
-        }
-    }
-    if ($checkMismo.Checked) {
-        foreach ($tb in $tbDependientes) { $tb.Text = $tbLun.Text }
-    }
-
-    $horas = [ordered]@{
-        Lunes     = $tbLun.Text
-        Martes    = $tbMar.Text
-        Miercoles = $tbMie.Text
-        Jueves    = $tbJue.Text
-        Viernes   = $tbVie.Text
-    }
-    $horasNorm = Test-Inputs $rutaPlanilla $horas
-    if ($null -eq $horasNorm) {
-        # Restaurar celdas inválidas al último valor guardado válido
-        $tbRef = [ordered]@{ Lunes=$tbLun; Martes=$tbMar; Miercoles=$tbMie; Jueves=$tbJue; Viernes=$tbVie }
-        foreach ($dia in $tbRef.Keys) {
-            $h = $tbRef[$dia].Text
-            $inv = $h -notmatch "^\d{1,2}:\d{2}$"
-            if (-not $inv) {
-                $p = $h -split ':'
-                $inv = [int]$p[0] -gt 23 -or [int]$p[1] -gt 59
-            }
-            if ($inv) { $tbRef[$dia].Text = $horasPorDia[$dia] }
-        }
-        if ($checkMismo.Checked) {
-            foreach ($tb in $tbDependientes) { $tb.Text = $tbLun.Text }
-        }
+    if (-not $resultado.Ok) {
+        Show-AvisoValidacion $resultado
         return
     }
-    $planillaOk    = Save-Config $rutaPlanilla $horasNorm
-    $erroresTareas = Update-ScheduledTasks $horasNorm
+
+    Set-FormularioOcupado $true
+    Save-Config -RutaPlanilla $rutaPlanilla -HorasNorm $resultado.HorasNormalizadas
+    $planillaOk    = Test-Path -LiteralPath $rutaPlanilla
+    $erroresTareas = Sync-TareasHorario -HorariosActivos $resultado.HorasNormalizadas -ScriptDir $scriptDir
+    Set-FormularioOcupado $false
 
     $avisos = @()
     if (-not $planillaOk) {
-        $avisos += "No encontramos la planilla en:`n$rutaPlanilla`n`nVerifica que la red esté disponible."
+        $avisos += "No encontramos la planilla en:`n$rutaPlanilla`n`nVerificá que la red esté disponible."
+    } elseif ($HitoExtensionesPlanilla -notcontains [System.IO.Path]::GetExtension($rutaPlanilla).ToLowerInvariant()) {
+        $avisos += "El archivo elegido no tiene extensión de planilla de Excel (.xls, .xlsx, .xlsm).`nSe guardó igual, pero verificá que sea el archivo correcto."
     }
     if ($erroresTareas.Count -gt 0) {
         $avisos += "No se pudieron actualizar las tareas de: $(($erroresTareas | ForEach-Object { $displayDia[$_] }) -join ', ').`n`nVolviendo a ejecutar el instalador se soluciona."
     }
 
     if ($avisos.Count -gt 0) {
-        [System.Windows.Forms.MessageBox]::Show(
-            ($avisos -join "`n`n"),
-            "Guardado con avisos",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning)
+        [void](Show-DialogoHito -Titulo "Guardado con avisos" -Tipo "Advertencia" `
+            -Mensaje ($avisos -join "`n`n"))
     } else {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Todo listo. Los recordatorios están configurados.",
-            "Guardado",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information)
+        [void](Show-DialogoHito -Titulo "Todo listo" -Tipo "Info" `
+            -Mensaje "Los recordatorios están configurados.")
     }
     $form.Close()
 })
 $form.Controls.Add($btnGuardar)
 
-$btnCancelar                          = New-Object System.Windows.Forms.Button
-$btnCancelar.Text                     = "Cancelar"
-$btnCancelar.Font                     = New-Object System.Drawing.Font("Segoe UI", 9)
-$btnCancelar.Location                 = New-Object System.Drawing.Point(225, 284)
-$btnCancelar.Size                     = New-Object System.Drawing.Size(205, 40)
-$btnCancelar.BackColor                = [System.Drawing.Color]::FromArgb(225, 225, 225)
-$btnCancelar.ForeColor                = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$btnCancelar.FlatStyle                = "Flat"
-$btnCancelar.FlatAppearance.BorderSize = 0
-$btnCancelar.Cursor                   = "Hand"
+$btnCancelar = New-BotonHito -Texto "&Cancelar" -X ($anchoVentana - $HitoMargen - 150 - 10 - 110) -Y 490 -Ancho 110 -Alto 40
 $btnCancelar.Add_Click({ $form.Close() })
 $form.Controls.Add($btnCancelar)
 

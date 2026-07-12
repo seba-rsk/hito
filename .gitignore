@@ -1,6 +1,7 @@
 # Datos de usuario — nunca se suben al repositorio
 config.json
 log.txt
+logs/
 
 # Accesos directos generados por el instalador
 *.lnk
@@ -15,3 +16,7 @@ $RECYCLE.BIN/
 *.swo
 *~
 .vscode/
+
+# Skills
+.claude/
+CLAUDE.md

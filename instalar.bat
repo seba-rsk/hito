@@ -1,19 +1,16 @@
 @echo off
-:: instalar.bat - v1.0.0
-:: Instala HITO: crea las tareas programadas y los accesos directos.
+:: instalar.bat
+:: Instala HITO: copia los archivos y delega la creacion de tareas
+:: programadas y accesos directos a crear_tareas.ps1.
 :: No requiere permisos de administrador.
+:: La version del software vive en constantes.ps1 (variable HitoVersion).
 
 echo =====================================================
-echo   HITO - Instalador v1.0.0
+echo   HITO - Instalador
 echo =====================================================
 echo.
 
 set "DESTINO=%USERPROFILE%\HITO"
-set "SCRIPT=%DESTINO%\hito.ps1"
-set "CONFIGURADOR=%DESTINO%\configurar.ps1"
-set "DESINSTALADOR=%DESTINO%\desinstalar.ps1"
-set "LANZADOR=%DESTINO%\lanzar.vbs"
-set "HORA_DEFAULT=17:30"
 
 :: Crear carpeta de instalacion
 if not exist "%DESTINO%" (
@@ -24,11 +21,18 @@ if not exist "%DESTINO%" (
 )
 
 :: Copiar archivos
-copy /Y "%~dp0hito.ps1"             "%SCRIPT%"                          >nul && echo [OK] hito.ps1 copiado
-copy /Y "%~dp0configurar.ps1"       "%CONFIGURADOR%"                    >nul && echo [OK] configurar.ps1 copiado
-copy /Y "%~dp0desinstalar.ps1"      "%DESINSTALADOR%"                   >nul && echo [OK] desinstalar.ps1 copiado
-copy /Y "%~dp0aplicar_horarios.ps1" "%DESTINO%\aplicar_horarios.ps1"    >nul && echo [OK] aplicar_horarios.ps1 copiado
-copy /Y "%~dp0lanzar.vbs"           "%LANZADOR%"                        >nul && echo [OK] lanzar.vbs copiado
+copy /Y "%~dp0hito.ps1"             "%DESTINO%\hito.ps1"             >nul && echo [OK] hito.ps1 copiado
+copy /Y "%~dp0configurar.ps1"       "%DESTINO%\configurar.ps1"       >nul && echo [OK] configurar.ps1 copiado
+copy /Y "%~dp0desinstalar.ps1"      "%DESTINO%\desinstalar.ps1"      >nul && echo [OK] desinstalar.ps1 copiado
+copy /Y "%~dp0aplicar_horarios.ps1" "%DESTINO%\aplicar_horarios.ps1" >nul && echo [OK] aplicar_horarios.ps1 copiado
+copy /Y "%~dp0crear_tareas.ps1"        "%DESTINO%\crear_tareas.ps1"        >nul && echo [OK] crear_tareas.ps1 copiado
+copy /Y "%~dp0sincronizar_horarios.ps1" "%DESTINO%\sincronizar_horarios.ps1" >nul && echo [OK] sincronizar_horarios.ps1 copiado
+copy /Y "%~dp0acerca_de.ps1"           "%DESTINO%\acerca_de.ps1"           >nul && echo [OK] acerca_de.ps1 copiado
+copy /Y "%~dp0constantes.ps1"          "%DESTINO%\constantes.ps1"          >nul && echo [OK] constantes.ps1 copiado
+copy /Y "%~dp0estilos.ps1"             "%DESTINO%\estilos.ps1"             >nul && echo [OK] estilos.ps1 copiado
+copy /Y "%~dp0validaciones.psm1"       "%DESTINO%\validaciones.psm1"       >nul && echo [OK] validaciones.psm1 copiado
+copy /Y "%~dp0configuracion.psm1"      "%DESTINO%\configuracion.psm1"      >nul && echo [OK] configuracion.psm1 copiado
+copy /Y "%~dp0lanzar.vbs"              "%DESTINO%\lanzar.vbs"              >nul && echo [OK] lanzar.vbs copiado
 if exist "%~dp0hito.ico" (
     copy /Y "%~dp0hito.ico" "%DESTINO%\hito.ico" >nul && echo [OK] hito.ico copiado
 ) else (
@@ -36,61 +40,18 @@ if exist "%~dp0hito.ico" (
 )
 echo.
 
-:: -- Crear tareas programadas (lunes a viernes) --------------------------------
-
-set "TR=wscript.exe \"%LANZADOR%\" \"%SCRIPT%\""
-
-schtasks /Delete /TN "HITO_Lun" /F >nul 2>&1
-schtasks /Create /TN "HITO_Lun" /TR "%TR%" /SC WEEKLY /D MON /ST %HORA_DEFAULT% /F >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Tarea Lunes     - %HORA_DEFAULT%) else (echo [ERROR] Tarea Lunes)
-
-schtasks /Delete /TN "HITO_Mar" /F >nul 2>&1
-schtasks /Create /TN "HITO_Mar" /TR "%TR%" /SC WEEKLY /D TUE /ST %HORA_DEFAULT% /F >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Tarea Martes    - %HORA_DEFAULT%) else (echo [ERROR] Tarea Martes)
-
-schtasks /Delete /TN "HITO_Mie" /F >nul 2>&1
-schtasks /Create /TN "HITO_Mie" /TR "%TR%" /SC WEEKLY /D WED /ST %HORA_DEFAULT% /F >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Tarea Miercoles - %HORA_DEFAULT%) else (echo [ERROR] Tarea Miercoles)
-
-schtasks /Delete /TN "HITO_Jue" /F >nul 2>&1
-schtasks /Create /TN "HITO_Jue" /TR "%TR%" /SC WEEKLY /D THU /ST %HORA_DEFAULT% /F >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Tarea Jueves    - %HORA_DEFAULT%) else (echo [ERROR] Tarea Jueves)
-
-schtasks /Delete /TN "HITO_Vie" /F >nul 2>&1
-schtasks /Create /TN "HITO_Vie" /TR "%TR%" /SC WEEKLY /D FRI /ST %HORA_DEFAULT% /F >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Tarea Viernes   - %HORA_DEFAULT%) else (echo [ERROR] Tarea Viernes)
-
+:: -- Tareas programadas, accesos directos y reaplicacion de horarios previos --
+:: Ruta completa al ejecutable: invocarlo solo por nombre ("powershell")
+:: hace que cmd.exe lo busque primero en la carpeta actual antes que en
+:: el PATH del sistema, y podria ejecutar un archivo con ese nombre
+:: plantado en la carpeta del instalador en vez del PowerShell real.
+echo Configurando tareas programadas y accesos directos...
 echo.
-
-:: Ejecucion retroactiva (si la PC estaba apagada a la hora configurada)
-for %%T in (HITO_Lun HITO_Mar HITO_Mie HITO_Jue HITO_Vie) do (
-    powershell -Command "Set-ScheduledTask -TaskName '%%T' -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)" >nul 2>&1
-)
-echo [OK] Ejecucion retroactiva activada
-
-:: -- Reaplicar horarios si habia config previa ---------------------------------
-if exist "%DESTINO%\config.json" (
+"%WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "%DESTINO%\crear_tareas.ps1"
+if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [INFO] Configuracion previa detectada. Aplicando horarios...
-    powershell -ExecutionPolicy Bypass -File "%DESTINO%\aplicar_horarios.ps1" >nul 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        echo [OK] Horarios personalizados aplicados
-    ) else (
-        echo [AVISO] No se pudieron aplicar los horarios. Abrir Configuracion y hacer clic en Guardar.
-    )
+    echo [AVISO] Hubo problemas creando alguna tarea programada. Revisa los mensajes de arriba.
 )
-
-:: -- Carpeta HITO en el Menu Inicio -------------------------------------------
-set "MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs\HITO"
-if not exist "%MENU%" mkdir "%MENU%"
-
-:: Acceso directo: Configuracion
-powershell -Command "$s=New-Object -ComObject WScript.Shell; $n='Configuraci'+[char]243+'n'; $l=$s.CreateShortcut('%MENU%\'+$n+'.lnk'); $l.TargetPath='wscript.exe'; $l.Arguments='\"%LANZADOR%\" \"%CONFIGURADOR%\"'; $l.WorkingDirectory='%USERPROFILE%'; $l.IconLocation='C:\Windows\System32\imageres.dll,109'; $l.Save()" >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Acceso directo: Configuracion) else (echo [ERROR] Acceso directo: Configuracion)
-
-:: Acceso directo: Desinstalar
-powershell -Command "$s=New-Object -ComObject WScript.Shell; $l=$s.CreateShortcut('%MENU%\Desinstalar.lnk'); $l.TargetPath='powershell.exe'; $l.Arguments='-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File \"%DESINSTALADOR%\"'; $l.WorkingDirectory='%USERPROFILE%'; $l.IconLocation='C:\Windows\System32\shell32.dll,32'; $l.Save()" >nul
-if %ERRORLEVEL% EQU 0 (echo [OK] Acceso directo: Desinstalar) else (echo [ERROR] Acceso directo: Desinstalar)
 
 echo.
 echo =====================================================
@@ -98,9 +59,9 @@ echo   LISTO. Proximos pasos:
 echo.
 echo   1. Abri el Menu Inicio
 echo   2. Busca la carpeta "HITO"
-echo   3. Abri "Configuracion"
-echo   4. Selecciona tu planilla y ajusta los horarios
-echo      (por defecto: 17:30 todos los dias)
+echo   3. Abri "HITO"
+echo   4. Selecciona tu planilla y ajusta los dias/horarios
+echo      (por defecto: Lunes a Viernes, 17:30)
 echo =====================================================
 echo.
 pause

@@ -1,34 +1,20 @@
 ﻿#Requires -Version 5.1
-# aplicar_horarios.ps1 — v1.0.0
+# aplicar_horarios.ps1
 # Reaplica los horarios guardados en config.json a las tareas programadas.
-# Llamado por instalar.bat cuando detecta una configuracion previa.
+# Llamado por crear_tareas.ps1 cuando detecta una configuración previa.
 
-$scriptDir = $PSScriptRoot
+$scriptDir  = $PSScriptRoot
 $configFile = Join-Path $scriptDir "config.json"
 
-if (-not (Test-Path $configFile)) { exit }
+. (Join-Path $scriptDir "constantes.ps1")
+. (Join-Path $scriptDir "sincronizar_horarios.ps1")
+Import-Module (Join-Path $scriptDir "configuracion.psm1") -Force
 
-$config = Get-Content $configFile -Encoding UTF8 -Raw | ConvertFrom-Json
-
-$tareas = [ordered]@{
-    Lunes     = "HITO_Lun"
-    Martes    = "HITO_Mar"
-    Miercoles = "HITO_Mie"
-    Jueves    = "HITO_Jue"
-    Viernes   = "HITO_Vie"
-}
-$diasSemana = [ordered]@{
-    Lunes     = "Monday"
-    Martes    = "Tuesday"
-    Miercoles = "Wednesday"
-    Jueves    = "Thursday"
-    Viernes   = "Friday"
+$cfg = Get-HitoConfig -RutaConfig $configFile
+if (-not $cfg.Existe) { exit }
+if (-not $cfg.Ok) {
+    Write-Host "[AVISO] No se pudo leer config.json, se omite la reaplicación de horarios." -ForegroundColor Yellow
+    exit
 }
 
-foreach ($dia in @($tareas.Keys)) {
-    $hora = $config.horarios.$dia
-    if ($hora) {
-        $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $diasSemana[$dia] -At $hora
-        Set-ScheduledTask -TaskName $tareas[$dia] -Trigger $trigger | Out-Null
-    }
-}
+Sync-TareasHorario -HorariosActivos $cfg.Horarios -ScriptDir $scriptDir | Out-Null
