@@ -1,9 +1,9 @@
 # HITO
 
 **Recordatorio diario para completar la planilla de horas**
-Windows 10 / 11 · No requiere permisos de administrador · v1.0.0
+Windows 10 / 11 · No requiere permisos de administrador · v1.1.0
 
-![Versión](https://img.shields.io/badge/versión-1.0.0-blue)
+![Versión](https://img.shields.io/badge/versión-1.1.0-blue)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-green)
 ![Powershell](https://img.shields.io/badge/PowerShell-5.1+-yellow)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows-lightgrey)

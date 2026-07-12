@@ -8,6 +8,11 @@ El versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 ---
 
 ## [Unreleased]
+(cambios en desarrollo que todavía no tienen versión asignada)
+
+---
+
+## [1.1.0] — 2026-07-12
 
 ### Agregado
 - `constantes.ps1`: fuente única de días, tareas programadas y hora por
